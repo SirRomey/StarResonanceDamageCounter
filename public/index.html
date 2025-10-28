@@ -427,10 +427,12 @@
         <footer style="margin-top: 40px; font-size: 14px; color: #888">
             <span>© 2025 Made with ❤️ by </span>
             <a href="https://github.com/dmlgzs/" target="_blank">Dimole</a>
+            <span>, </span>
+            <a href="https://github.com/sirromey/" target="_blank">SirRomey</a>
             <span> and </span>
             <a href="https://github.com/dmlgzs/StarResonanceDamageCounter/graphs/contributors" target="_blank">Other Contributors</a>
             <span> | </span>
-            <a href="https://github.com/dmlgzs/StarResonanceDamageCounter" target="_blank">GitHub</a>
+            <a href="https://github.com/sirromey/StarResonanceDamageCounter" target="_blank">GitHub</a>
         </footer>
 
         <script>
@@ -490,8 +492,8 @@
             let isChartVisible = true;
 
             // 版本检查相关变量
-            const CURRENT_VERSION = '3.3.2';
-            const GITHUB_REPO = 'dmlgzs/StarResonanceDamageCounter';
+            const CURRENT_VERSION = '3.3.3';
+            const GITHUB_REPO = 'sirromey/StarResonanceDamageCounter';
             const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 
             // 从series数据中提取可见最大值
@@ -990,9 +992,18 @@
                     value: topDamages[idx],
                     name,
                     label: {
-                        show: true, // 打开这一项的标签
-                        position: 'outside', // 放到扇区外侧
-                        formatter: '{b}\n{d}%', // 显示“名称 + 百分比”
+                        show: function (params) {
+                            return params.percent >= 5;
+                        },
+                        position: 'inside',
+                        formatter: '{d}%',
+                        textStyle: {
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: 12,
+                            textBorderColor: '#000',
+                            textBorderWidth: 2,
+                        },
                     },
                     labelLine: {
                         show: true, // 显示引导线
@@ -1003,9 +1014,18 @@
                         value: otherDamages,
                         name: getTranslationByReplace('其他'),
                         label: {
-                            show: true,
-                            position: 'outside',
-                            formatter: '{b}\n{d}%',
+                            show: function (params) {
+                                return params.percent >= 5;
+                            },
+                            position: 'inside',
+                            formatter: '{d}%',
+                            textStyle: {
+                                color: '#fff',
+                                fontWeight: 'bold',
+                                fontSize: 12,
+                                textBorderColor: '#000',
+                                textBorderWidth: 2,
+                            },
                         },
                         labelLine: {
                             show: true,
@@ -1032,6 +1052,9 @@
                         right: 10,
                         top: 'center',
                         textStyle: { color: '#cbd5e0' },
+                        formatter: function (name) {
+                            return name.length > 20 ? name.substring(0, 20) + '...' : name;
+                        },
                     },
                     series: [
                         {
@@ -1077,27 +1100,37 @@
                         backgroundColor: 'rgba(40, 40, 60, 0.9)',
                         borderColor: '#3498db',
                         textStyle: { color: '#ecf0f1' },
+                        formatter: function (params) {
+                            const fullSkillName = skillNames[params[0].dataIndex];
+                            let result = `<div style="font-weight: bold; margin-bottom: 5px;">${fullSkillName}</div>`;
+                            params.forEach((param) => {
+                                result += `<div style="color: ${param.color};">${param.seriesName}: ${param.value}%</div>`;
+                            });
+                            return result;
+                        },
                     },
                     legend: {
                         data: [getTranslationByReplace('暴击率'), getTranslationByReplace('幸运触发率')],
-                        bottom: 10,
+                        bottom: 5,
                         textStyle: { color: '#cbd5e0' },
                     },
                     grid: {
                         left: '3%',
                         right: '4%',
-                        bottom: '15%',
+                        bottom: '20%',
                         top: '15%',
                         containLabel: true,
                     },
                     xAxis: {
                         type: 'category',
-                        data: skillNames.map((name) => `${name}`),
+                        data: skillNames.map((name) => (name.length > 15 ? name.substring(0, 15) + '...' : name)),
                         axisLine: { lineStyle: { color: '#7f8c8d' } },
                         axisLabel: {
                             color: '#95a5a6',
                             interval: 0,
                             rotate: 45,
+                            overflow: 'truncate',
+                            width: 80,
                         },
                     },
                     yAxis: {
@@ -1432,7 +1465,10 @@
 
                 const entries = Object.entries(enemyData || {});
                 const parsed = entries.map(([id, info]) => {
-                    const name = info && typeof info.name === 'string' && info.name.trim().length > 0 ? info.name.trim() : `未知敌人 #${id}`;
+                    const name =
+                        info && typeof info.name === 'string' && info.name.trim().length > 0
+                            ? info.name.trim()
+                            : `${translations.unknownEnemy || '未知敌人'} #${id}`;
                     const hp = Number(info?.hp ?? 0);
                     const maxHp = Number(info?.max_hp ?? 0);
                     return {
@@ -1473,8 +1509,13 @@
                     const fillColor =
                         enemy.maxHp > 0 ? (enemy.hp <= 0 ? 'rgba(127, 140, 141, 0.35)' : 'rgba(231, 76, 60, 0.32)') : 'rgba(231, 76, 60, 0.18)';
                     const currentHp = Math.max(0, enemy.hp);
-                    const hpDisplay = `${formatNumber(currentHp)} / ${enemy.maxHp > 0 ? formatNumber(enemy.maxHp) : '未知'}`;
-                    const statusText = enemy.maxHp > 0 ? (enemy.hp <= 0 ? '已击败' : `${percent.toFixed(1)}%`) : '血量未知';
+                    const hpDisplay = `${formatNumber(currentHp)} / ${enemy.maxHp > 0 ? formatNumber(enemy.maxHp) : translations.unknown || '未知'}`;
+                    const statusText =
+                        enemy.maxHp > 0
+                            ? enemy.hp <= 0
+                                ? translations.defeated || '已击败'
+                                : `${percent.toFixed(1)}%`
+                            : translations.hpUnknown || '血量未知';
                     const statusClass = enemy.maxHp > 0 && enemy.hp <= 0 ? 'enemy-status defeated' : 'enemy-status';
 
                     const item = document.createElement('div');

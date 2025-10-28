@@ -1,6 +1,6 @@
 {
   "name": "star-resonance-damage-counter",
-  "version": "3.3.1",
+  "version": "3.3.3",
   "description": "Damage Counter for Star Resonance",
   "main": "server.js",
   "bin": {
@@ -17,6 +17,9 @@
   },
   "keywords": [],
   "author": "Dimole <dmlgzs@qq.com>",
+  "contributors": [
+    "SirRomey <aadhav@sirromey.dev>"
+  ],
   "license": "AGPL-3.0",
   "packageManager": "pnpm@10.13.1",
   "dependencies": {

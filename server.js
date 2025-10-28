@@ -10,7 +10,7 @@ const net = require('net');
 const path = require('path');
 const { Server } = require('socket.io');
 const fsPromises = require('fs').promises;
-const PacketProcessor = require('./algo/packet');
+const { PacketProcessor, getMonsterName, setLanguage: setPacketLanguage } = require('./algo/packet');
 const Readable = require('stream').Readable;
 const Cap = cap.Cap;
 const decoders = cap.decoders;
@@ -20,14 +20,32 @@ const app = express();
 const { exec } = require('child_process');
 const findDefaultNetworkDevice = require('./algo/netInterfaceUtil');
 
-const skillConfig = require('./tables/skill_names_new.json');
-const VERSION = '3.3.1';
+const skillConfig = {
+    zh: require('./tables/skill_names_new.json'),
+    en: require('./tables/skill_names_en.json'),
+};
+const VERSION = '3.3.3';
 const SETTINGS_PATH = path.join('./settings.json');
 let globalSettings = {
     autoClearOnServerChange: true,
     autoClearOnTimeout: false,
     onlyRecordEliteDummy: false,
 };
+
+let currentLanguage = 'en';
+
+function getSkillName(skillId, language = currentLanguage) {
+    const skillName = skillConfig[language][skillId];
+    if (skillName) {
+        return skillName;
+    }
+
+    if (language === 'en') {
+        return `Unknown Skill #${skillId}`;
+    } else {
+        return `未知技能 #${skillId}`;
+    }
+}
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -281,7 +299,7 @@ class UserData {
         this.healingStats = new StatisticData(this, '治疗');
         this.takenDamage = 0; // 承伤
         this.deadCount = 0; // 死亡次数
-        this.profession = '未知';
+        this.profession = currentLanguage === 'en' ? 'Unknown' : '未知';
         this.skillUsage = new Map(); // 技能使用情况
         this.fightPoint = 0; // 总评分
         this.subProfession = '';
@@ -299,13 +317,12 @@ class UserData {
      */
     addDamage(skillId, element, damage, isCrit, isLucky, isCauseLucky, hpLessenValue = 0) {
         this.damageStats.addRecord(damage, isCrit, isLucky, hpLessenValue);
-        // 记录技能使用情况
-        const skillName = skillConfig[skillId] ?? skillId;
-        if (!this.skillUsage.has('伤害-' + skillName)) {
-            this.skillUsage.set('伤害-' + skillName, new StatisticData(this, '伤害', element, skillName));
+        const skillKey = `伤害-${skillId}`;
+        if (!this.skillUsage.has(skillKey)) {
+            this.skillUsage.set(skillKey, new StatisticData(this, '伤害', element, skillId));
         }
-        this.skillUsage.get('伤害-' + skillName).addRecord(damage, isCrit, isCauseLucky, hpLessenValue);
-        this.skillUsage.get('伤害-' + skillName).realtimeWindow.length = 0;
+        this.skillUsage.get(skillKey).addRecord(damage, isCrit, isCauseLucky, hpLessenValue);
+        this.skillUsage.get(skillKey).realtimeWindow.length = 0;
 
         const subProfession = getSubProfessionBySkillId(skillId);
         if (subProfession) {
@@ -323,13 +340,12 @@ class UserData {
      */
     addHealing(skillId, element, healing, isCrit, isLucky, isCauseLucky) {
         this.healingStats.addRecord(healing, isCrit, isLucky);
-        // 记录技能使用情况
-        const skillName = skillConfig[skillId] ?? skillId;
-        if (!this.skillUsage.has('治疗-' + skillName)) {
-            this.skillUsage.set('治疗-' + skillName, new StatisticData(this, '治疗', element, skillName));
+        const skillKey = `治疗-${skillId}`;
+        if (!this.skillUsage.has(skillKey)) {
+            this.skillUsage.set(skillKey, new StatisticData(this, '治疗', element, skillId));
         }
-        this.skillUsage.get('治疗-' + skillName).addRecord(healing, isCrit, isCauseLucky);
-        this.skillUsage.get('治疗-' + skillName).realtimeWindow.length = 0;
+        this.skillUsage.get(skillKey).addRecord(healing, isCrit, isCauseLucky);
+        this.skillUsage.get(skillKey).realtimeWindow.length = 0;
 
         const subProfession = getSubProfessionBySkillId(skillId);
         if (subProfession) {
@@ -403,11 +419,13 @@ class UserData {
             const luckyCount = stat.count.lucky;
             const critRate = stat.count.total > 0 ? critCount / stat.count.total : 0;
             const luckyRate = stat.count.total > 0 ? luckyCount / stat.count.total : 0;
-            const name = stat.name ?? skillKey;
+
+            const skillId = stat.name;
+            const translatedName = getSkillName(skillId);
             const elementype = stat.element;
 
             skills[skillKey] = {
-                displayName: name,
+                displayName: translatedName,
                 type: stat.type,
                 elementype: elementype,
                 totalDamage: stat.stats.total,
@@ -491,6 +509,7 @@ class UserDataManager {
 
         this.enemyCache = {
             name: new Map(),
+            monsterId: new Map(),
             hp: new Map(),
             maxHp: new Map(),
         };
@@ -794,10 +813,21 @@ class UserDataManager {
     /** 获取所有敌方缓存数据 */
     getAllEnemiesData() {
         const result = {};
-        const enemyIds = new Set([...this.enemyCache.name.keys(), ...this.enemyCache.hp.keys(), ...this.enemyCache.maxHp.keys()]);
+        const enemyIds = new Set([
+            ...this.enemyCache.name.keys(),
+            ...this.enemyCache.monsterId.keys(),
+            ...this.enemyCache.hp.keys(),
+            ...this.enemyCache.maxHp.keys(),
+        ]);
         enemyIds.forEach((id) => {
+            let name = this.enemyCache.name.get(id);
+            const monsterId = this.enemyCache.monsterId.get(id);
+            if (monsterId) {
+                name = getMonsterName(monsterId) || name;
+            }
+
             result[id] = {
-                name: this.enemyCache.name.get(id),
+                name: name,
                 hp: this.enemyCache.hp.get(id),
                 max_hp: this.enemyCache.maxHp.get(id),
             };
@@ -808,6 +838,7 @@ class UserDataManager {
     /** 移除敌方缓存数据 */
     deleteEnemyData(id) {
         this.enemyCache.name.delete(id);
+        this.enemyCache.monsterId.delete(id);
         this.enemyCache.hp.delete(id);
         this.enemyCache.maxHp.delete(id);
     }
@@ -815,6 +846,7 @@ class UserDataManager {
     /** 清空敌方缓存 */
     refreshEnemyCache() {
         this.enemyCache.name.clear();
+        this.enemyCache.monsterId.clear();
         this.enemyCache.hp.clear();
         this.enemyCache.maxHp.clear();
     }
@@ -861,8 +893,13 @@ class UserDataManager {
                     maxHpMonsterId = id;
                 }
             }
-            if (maxHpMonsterId && this.enemyCache.name.has(maxHpMonsterId)) {
-                summary.maxHpMonster = this.enemyCache.name.get(maxHpMonsterId);
+            if (maxHpMonsterId) {
+                let maxHpMonsterName = this.enemyCache.name.get(maxHpMonsterId);
+                const maxHpMonsterId_ID = this.enemyCache.monsterId.get(maxHpMonsterId);
+                if (maxHpMonsterId_ID) {
+                    maxHpMonsterName = getMonsterName(maxHpMonsterId_ID) || maxHpMonsterName;
+                }
+                summary.maxHpMonster = maxHpMonsterName || '';
             }
 
             const allUsersData = {};
@@ -922,7 +959,7 @@ class UserDataManager {
 async function main() {
     print('Welcome to use Damage Counter for Star Resonance!');
     print(`Version: V${VERSION}`);
-    print('GitHub: https://github.com/dmlgzs/StarResonanceDamageCounter');
+    print('GitHub: https://github.com/sirromey/StarResonanceDamageCounter');
     for (let i = 0; i < devices.length; i++) {
         print(String(i).padStart(2, ' ') + '.' + (devices[i].description || devices[i].name));
     }
@@ -1222,6 +1259,22 @@ async function main() {
         globalSettings = { ...globalSettings, ...newSettings };
         await fsPromises.writeFile(SETTINGS_PATH, JSON.stringify(globalSettings, null, 2), 'utf8');
         res.json({ code: 0, data: globalSettings });
+    });
+
+    // Language preference endpoint
+    app.post('/api/language', (req, res) => {
+        const { language } = req.body;
+        if (language && skillConfig[language]) {
+            currentLanguage = language;
+            setPacketLanguage(language);
+            res.json({ code: 0, data: { language: currentLanguage } });
+        } else {
+            res.status(400).json({ code: 1, message: 'Invalid language' });
+        }
+    });
+
+    app.get('/api/language', (req, res) => {
+        res.json({ code: 0, data: { language: currentLanguage } });
     });
 
     try {

@@ -4,7 +4,22 @@ const Long = require('long');
 const pbjs = require('protobufjs/minimal');
 const fs = require('fs');
 
-const monsterNames = require('../tables/monster_names.json');
+const monsterNames = {
+    zh: require('../tables/monster_names.json'),
+    en: require('../tables/monster_names_en.json'),
+};
+
+let currentLanguage = 'en';
+
+function getMonsterName(monsterId, language = currentLanguage) {
+    return monsterNames[language][monsterId] ?? monsterId;
+}
+
+function setLanguage(language) {
+    if (monsterNames[language]) {
+        currentLanguage = language;
+    }
+}
 
 class BinaryReader {
     constructor(buffer, offset = 0) {
@@ -201,7 +216,7 @@ const getDamageElement = (damageProperty) => {
         case EDamageProperty.Dark:
             return '🌑暗';
         case EDamageProperty.Count:
-            return '❓？'; // 未知
+            return currentLanguage === 'en' ? '❓Unknown' : '❓？';
         default:
             return '⚔️物';
     }
@@ -354,6 +369,13 @@ class PacketProcessor {
                 } else {
                     //非玩家受到伤害
                     if (isAttackerPlayer) {
+                        const targetId = targetUuid.toNumber();
+                        if (!this.userDataManager.enemyCache.name.has(targetId) && !this.userDataManager.enemyCache.monsterId.has(targetId)) {
+                            const placeholderName = currentLanguage === 'en' ? `Enemy #${targetId}` : `敌人 #${targetId}`;
+                            this.userDataManager.enemyCache.name.set(targetId, placeholderName);
+                            this.logger.info(`Created placeholder entry for enemy ${targetId} (player attack)`);
+                        }
+
                         //只记录玩家造成的伤害
                         this.userDataManager.addDamage(
                             attackerUuid.toNumber(),
@@ -364,12 +386,19 @@ class PacketProcessor {
                             isLucky,
                             isCauseLucky,
                             hpLessenValue.toNumber(),
-                            targetUuid.toNumber(),
+                            targetId,
                         );
                     }
                 }
+                const targetId = targetUuid.toNumber();
+                if (!this.userDataManager.enemyCache.name.has(targetId) && !this.userDataManager.enemyCache.monsterId.has(targetId)) {
+                    const placeholderName = currentLanguage === 'en' ? `Enemy #${targetId}` : `敌人 #${targetId}`;
+                    this.userDataManager.enemyCache.name.set(targetId, placeholderName);
+                    this.logger.info(`Created placeholder entry for enemy ${targetId}`);
+                }
+
                 if (isDead) {
-                    this.userDataManager.enemyCache.hp.set(targetUuid.toNumber(), 0);
+                    this.userDataManager.enemyCache.hp.set(targetId, 0);
                 }
             }
 
@@ -389,8 +418,14 @@ class PacketProcessor {
                 }
                 infoStr += `#${attackerUuid.toString()}(player)`;
             } else {
-                if (this.userDataManager.enemyCache.name.has(attackerUuid.toNumber())) {
-                    infoStr += this.userDataManager.enemyCache.name.get(attackerUuid.toNumber());
+                const attackerId = attackerUuid.toNumber();
+                let attackerName = this.userDataManager.enemyCache.name.get(attackerId);
+                const attackerMonsterId = this.userDataManager.enemyCache.monsterId.get(attackerId);
+                if (attackerMonsterId) {
+                    attackerName = getMonsterName(attackerMonsterId) || attackerName;
+                }
+                if (attackerName) {
+                    infoStr += attackerName;
                 }
                 infoStr += `#${attackerUuid.toString()}(enemy)`;
             }
@@ -403,8 +438,14 @@ class PacketProcessor {
                 }
                 targetName += `#${targetUuid.toString()}(player)`;
             } else {
-                if (this.userDataManager.enemyCache.name.has(targetUuid.toNumber())) {
-                    targetName += this.userDataManager.enemyCache.name.get(targetUuid.toNumber());
+                const targetId = targetUuid.toNumber();
+                let targetEnemyName = this.userDataManager.enemyCache.name.get(targetId);
+                const targetMonsterId = this.userDataManager.enemyCache.monsterId.get(targetId);
+                if (targetMonsterId) {
+                    targetEnemyName = getMonsterName(targetMonsterId) || targetEnemyName;
+                }
+                if (targetEnemyName) {
+                    targetName += targetEnemyName;
                 }
                 targetName += `#${targetUuid.toString()}(enemy)`;
             }
@@ -644,7 +685,8 @@ class PacketProcessor {
                     break;
                 case AttrType.AttrId:
                     const attrId = reader.int32();
-                    const name = monsterNames[attrId];
+                    this.userDataManager.enemyCache.monsterId.set(enemyUid, attrId);
+                    const name = getMonsterName(attrId);
                     if (name) {
                         this.logger.info(`Found moster name ${name} for id ${enemyUid}`);
                         this.userDataManager.enemyCache.name.set(enemyUid, name);
@@ -792,4 +834,5 @@ class PacketProcessor {
     }
 }
 
-module.exports = PacketProcessor;
+module.exports = { PacketProcessor, getMonsterName, setLanguage };
+module.exports.setLanguage = setLanguage;

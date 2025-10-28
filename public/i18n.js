@@ -80,6 +80,18 @@ async function changeLanguage(lang) {
     await loadTranslations(lang);
     updateTexts();
 
+    try {
+        await fetch('/api/language', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ language: lang }),
+        });
+    } catch (error) {
+        console.error('Failed to update server language:', error);
+    }
+
     // 更新下拉菜单中的active状态
     updateLanguageDropdownActive();
 
@@ -154,6 +166,18 @@ document.addEventListener('click', function (event) {
 document.addEventListener('DOMContentLoaded', async () => {
     await loadTranslations(currentLang);
     updateTexts();
+
+    try {
+        await fetch('/api/language', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ language: currentLang }),
+        });
+    } catch (error) {
+        console.error('Failed to sync language with server on startup:', error);
+    }
 
     // 创建语言下拉菜单
     createLanguageDropdown();

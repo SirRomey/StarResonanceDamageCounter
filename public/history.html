@@ -620,9 +620,18 @@
                     value: topDamages[idx],
                     name,
                     label: {
-                        show: true, // 打开这一项的标签
-                        position: 'outside', // 放到扇区外侧
-                        formatter: '{b}\n{d}%', // 显示“名称 + 百分比”
+                        show: function (params) {
+                            return params.percent >= 5;
+                        },
+                        position: 'inside',
+                        formatter: '{d}%',
+                        textStyle: {
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: 12,
+                            textBorderColor: '#000',
+                            textBorderWidth: 2,
+                        },
                     },
                     labelLine: {
                         show: true, // 显示引导线
@@ -633,9 +642,18 @@
                         value: otherDamages,
                         name: getTranslationByReplace('其他'),
                         label: {
-                            show: true,
-                            position: 'outside',
-                            formatter: '{b}\n{d}%',
+                            show: function (params) {
+                                return params.percent >= 5;
+                            },
+                            position: 'inside',
+                            formatter: '{d}%',
+                            textStyle: {
+                                color: '#fff',
+                                fontWeight: 'bold',
+                                fontSize: 12,
+                                textBorderColor: '#000',
+                                textBorderWidth: 2,
+                            },
                         },
                         labelLine: {
                             show: true,
@@ -662,6 +680,9 @@
                         right: 10,
                         top: 'center',
                         textStyle: { color: '#cbd5e0' },
+                        formatter: function (name) {
+                            return name.length > 20 ? name.substring(0, 20) + '...' : name;
+                        },
                     },
                     series: [
                         {
@@ -707,27 +728,37 @@
                         backgroundColor: 'rgba(40, 40, 60, 0.9)',
                         borderColor: '#3498db',
                         textStyle: { color: '#ecf0f1' },
+                        formatter: function (params) {
+                            const fullSkillName = skillNames[params[0].dataIndex];
+                            let result = `<div style="font-weight: bold; margin-bottom: 5px;">${fullSkillName}</div>`;
+                            params.forEach((param) => {
+                                result += `<div style="color: ${param.color};">${param.seriesName}: ${param.value}%</div>`;
+                            });
+                            return result;
+                        },
                     },
                     legend: {
                         data: [getTranslationByReplace('暴击率'), getTranslationByReplace('幸运触发率')],
-                        bottom: 10,
+                        bottom: 5,
                         textStyle: { color: '#cbd5e0' },
                     },
                     grid: {
                         left: '3%',
                         right: '4%',
-                        bottom: '15%',
+                        bottom: '20%',
                         top: '15%',
                         containLabel: true,
                     },
                     xAxis: {
                         type: 'category',
-                        data: skillNames.map((name) => `${name}`),
+                        data: skillNames.map((name) => (name.length > 15 ? name.substring(0, 15) + '...' : name)),
                         axisLine: { lineStyle: { color: '#7f8c8d' } },
                         axisLabel: {
                             color: '#95a5a6',
                             interval: 0,
                             rotate: 45,
+                            overflow: 'truncate',
+                            width: 80,
                         },
                     },
                     yAxis: {
@@ -1005,7 +1036,7 @@
                     opt.value = 0;
                     opt.textContent = translations.selectTime || '请选择时间以获取数据';
                     select.appendChild(opt);
-                    availableTimeStamps.forEach((item) => {
+                    availableTimeStamps.reverse().forEach((item) => {
                         const opt = document.createElement('option');
                         opt.value = item.timestamp;
                         opt.textContent = item.name;
